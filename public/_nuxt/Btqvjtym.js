@@ -1,0 +1,1 @@
+import{o as e,s as o,u as t,n as a}from"./Bgk1oRip.js";const n=e({event_id:t([a(),e({id:a(),title:o()})]).optional(),name:o().optional(),description:o().optional()}),p=e({event_id:t([a(),e({id:a(),title:o()})]).optional(),name:o().optional(),description:o().optional(),order:t([a(),o()]).optional()});export{n as C,p as U};

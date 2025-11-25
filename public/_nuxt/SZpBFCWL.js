@@ -1,0 +1,1 @@
+import{o as s,s as a,u as i,a as n,n as e}from"./Bgk1oRip.js";const t=s({user_id:e().min(1,"User is required"),phase_ids:n(e()).min(1,"At least one phase is required"),judge_number:i([e(),a()]),category_assignment:a().optional()}),o=s({phase_ids:n(e()).min(1,"At least one phase is required"),judge_number:i([e(),a()]),category_assignment:a().optional()});export{t as C,o as U};
