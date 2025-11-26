@@ -64,7 +64,8 @@ class ScoreController extends Controller
         ]);
     }
 
-    public function store(StoreScoreRequest $request){
+    public function store(StoreScoreRequest $request)
+    {
         // Gate::authorize('score_enter');
 
         $data = $request->validated();
@@ -89,23 +90,17 @@ class ScoreController extends Controller
         // Derive category + weighted
         $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
         $data['category_id'] = $criterion->category_id;
-        // Derive category + weighted
-        $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
-        $data['category_id'] = $criterion->category_id;
 
-        // TEMPORARY FIX — ROUND UP WEIGHTED SCORE
+        // TEMPORARY FIX — FORCE ROUND UP TO NEXT WHOLE NUMBER (DISPLAYED WITH 5 DECIMALS)
         // TODO: ⚠️ REMOVE THIS IN THE FUTURE
-        // Correct logic should NOT round up. We are rounding up only due to current requirements.
+        // Correct flow should *not* round up; using ceil() to satisfy current requirement.
         $rawWeighted = $data['score'] * ($criterion->percentage / 100);
 
-        $integerPart = floor($rawWeighted);
-        if ($rawWeighted > $integerPart) {
-            $roundedUp = $integerPart + 1;
-        } else {
-            $roundedUp = $integerPart;
-        }
+        // Small epsilon to avoid float issues like 27.00000000001
+        $ceiled = ceil($rawWeighted + 1e-9);
 
-        $data['weighted_score'] = number_format($roundedUp, 5, '.', '');
+        // Store/return as 5-decimal string/number
+        $data['weighted_score'] = number_format($ceiled, 5, '.', ''); // e.g. 28 -> "28.00000"
 
         $score = null;
 
@@ -141,6 +136,7 @@ class ScoreController extends Controller
             ->response()
             ->setStatusCode(201);
     }
+
 
 
     public function update(UpdateScoreRequest $request, Score $score) {
