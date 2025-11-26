@@ -1,0 +1,1 @@
+import{o as e,s as t}from"./Bgk1oRip.js";const a=e({title:t({invalid_type_error:"Title is required"}).min(3,"Title must be at least 3 characters long")}),r=e({title:t({invalid_type_error:"Title is required"}).min(3,"Title must be at least 3 characters long")});export{a as C,r as U};

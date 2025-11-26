@@ -1,0 +1,1 @@
+import{d as t,c as o,o as s,e as n}from"#entry";const l=t({__name:"index",setup(a){return(r,e)=>(s(),o("div",null,[...e[0]||(e[0]=[n("h1",null,"Pages Index",-1),n("p",null,"Lorem ipsum dolor sit amet consectetur adipisicing elit.",-1)])]))}});export{l as default};
