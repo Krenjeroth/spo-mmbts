@@ -64,8 +64,7 @@ class ScoreController extends Controller
         ]);
     }
 
-    public function store(StoreScoreRequest $request)
-    {
+    public function store(StoreScoreRequest $request){
         // Gate::authorize('score_enter');
 
         $data = $request->validated();
@@ -90,12 +89,7 @@ class ScoreController extends Controller
         // Derive category + weighted
         $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
         $data['category_id'] = $criterion->category_id;
-
-        // TEMPORARY FIX — FORCE ROUND UP TO NEXT WHOLE NUMBER (KEEP 5 DECIMALS)
-        // TODO: ⚠️ REMOVE THIS IN THE FUTURE
-        $rawWeighted = $data['score'] * ($criterion->percentage / 100);
-        $ceiled = ceil($rawWeighted - 1e-9);
-        $data['weighted_score'] = number_format($ceiled, 5, '.', '');
+        $data['weighted_score'] = round($data['score'] * ($criterion->percentage / 100), 5);
 
         $score = null;
 
@@ -131,7 +125,6 @@ class ScoreController extends Controller
             ->response()
             ->setStatusCode(201);
     }
-
 
 
     public function update(UpdateScoreRequest $request, Score $score) {
