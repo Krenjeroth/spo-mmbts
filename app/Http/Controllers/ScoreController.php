@@ -91,16 +91,16 @@ class ScoreController extends Controller
         $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
         $data['category_id'] = $criterion->category_id;
 
-        // TEMPORARY FIX — FORCE ROUND UP TO NEXT WHOLE NUMBER (DISPLAYED WITH 5 DECIMALS)
+        // TEMPORARY FIX — FORCE ROUND UP TO NEXT WHOLE NUMBER (KEEP 5 DECIMALS)
         // TODO: ⚠️ REMOVE THIS IN THE FUTURE
-        // Correct flow should *not* round up; using ceil() to satisfy current requirement.
+        // Correct logic should NOT round up; we do this only due to current requirements.
         $rawWeighted = $data['score'] * ($criterion->percentage / 100);
 
-        // Small epsilon to avoid float issues like 27.00000000001
-        $ceiled = ceil($rawWeighted + 1e-9);
+        // Ceil to the next integer (so 27.001 → 28, 27.999 → 28)
+        $ceiled = (int) ceil($rawWeighted);
 
-        // Store/return as 5-decimal string/number
-        $data['weighted_score'] = number_format($ceiled, 5, '.', ''); // e.g. 28 -> "28.00000"
+        // Store as 5-decimal value, e.g. 28 -> "28.00000"
+        $data['weighted_score'] = number_format($ceiled, 5, '.', '');
 
         $score = null;
 
