@@ -93,13 +93,8 @@ class ScoreController extends Controller
 
         // TEMPORARY FIX — FORCE ROUND UP TO NEXT WHOLE NUMBER (KEEP 5 DECIMALS)
         // TODO: ⚠️ REMOVE THIS IN THE FUTURE
-        // Correct logic should NOT round up; we do this only due to current requirements.
         $rawWeighted = $data['score'] * ($criterion->percentage / 100);
-
-        // Ceil to the next integer (so 27.001 → 28, 27.999 → 28)
-        $ceiled = (int) ceil($rawWeighted);
-
-        // Store as 5-decimal value, e.g. 28 -> "28.00000"
+        $ceiled = ceil($rawWeighted - 1e-9);
         $data['weighted_score'] = number_format($ceiled, 5, '.', '');
 
         $score = null;
