@@ -89,7 +89,15 @@ class ScoreController extends Controller
         // Derive category + weighted
         $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
         $data['category_id'] = $criterion->category_id;
-        $data['weighted_score'] = round($data['score'] * ($criterion->percentage / 100), 5);
+        // Derive category + weighted
+        $criterion = Criterion::with(['category','children'])->findOrFail($data['criterion_id']);
+        $data['category_id'] = $criterion->category_id;
+
+        // TEMPORARY FIX — ROUND UP WEIGHTED SCORE
+        // TODO: ⚠️ REMOVE THIS IN THE FUTURE
+        // Correct logic should NOT round up. We are rounding up only due to current requirements.
+        $rawWeighted = $data['score'] * ($criterion->percentage / 100);
+        $data['weighted_score'] = ceil($rawWeighted * 100000) / 100000; // round UP to 5 decimals
 
         $score = null;
 
