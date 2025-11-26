@@ -76,17 +76,21 @@ class JudgePrintableController extends Controller
             ->get();
 
         $grouped = $results->map(function ($r) {
-                return [
-                    'contestant_id'    => $r->contestant_id,
-                    'candidate_number' => (string)optional($r->contestant)->number,
-                    'municipality'     => (string)optional($r->contestant?->municipality)->name,
-                    'gender'           => strtolower(optional($r->contestant)->gender ?? ''),
-                    'official_total'   => (float)$r->category_total,
-                    'official_rank'    => $r->rank,
-                ];
-            })
-            ->filter(fn ($x) => in_array($x['gender'], ['male','female'], true))
-            ->groupBy('gender');
+            return [
+                'contestant_id'    => $r->contestant_id,
+                'candidate_number' => (string) (optional($r->contestant)->number ?? 0),
+                'municipality'     => (string)optional($r->contestant?->municipality)->name,
+                'gender'           => strtolower(optional($r->contestant)->gender ?? ''),
+                'official_total'   => (float)$r->category_total,
+                'official_rank'    => $r->rank,
+            ];
+        })
+        ->filter(fn ($x) => in_array($x['gender'], ['male','female'], true))
+        ->groupBy('gender')
+        ->map(function ($items) {
+            // sort each gender group by candidate number ASC
+            return $items->sortBy('candidate_number')->values();
+        });
 
         $criteria = DB::table('criteria')
             ->where('event_id', $eventId)
@@ -255,6 +259,7 @@ class JudgePrintableController extends Controller
 
 
         // ---- body writer unchanged (kept as-is) ----
+        // ---- body writer now uses weighted_score instead of recomputing ----
         $writeBody = function ($table, $rows, $criteria) use ($eventId, $category, $judge) {
             $critCount = count($criteria);
 
@@ -267,35 +272,44 @@ class JudgePrintableController extends Controller
             $totalCol = (int)$table->Columns->Count - 1;
             $rankCol  = (int)$table->Columns->Count;
 
-            // Cache scores to cut DB calls
+            // Cache scores (RAW + WEIGHTED) to cut DB calls
             $scoresCache = [];
             foreach ($rows as $row) {
                 $cid = $row['contestant_id'];
                 foreach ($criteria as $crit) {
-                    $scoresCache[$cid][$crit->id] = (float)\App\Models\Score::where('event_id',$eventId)
-                        ->where('category_id',$category->id)
-                        ->where('contestant_id',$cid)
-                        ->where('judge_id',$judge->id)
-                        ->where('criterion_id',$crit->id)
-                        ->sum('score');
+                    $agg = \App\Models\Score::where('event_id', $eventId)
+                        ->where('category_id', $category->id)
+                        ->where('contestant_id', $cid)
+                        ->where('judge_id', $judge->id)
+                        ->where('criterion_id', $crit->id)
+                        ->selectRaw('COALESCE(SUM(score),0) AS raw, COALESCE(SUM(weighted_score),0) AS weighted')
+                        ->first();
+
+                    $scoresCache[$cid][$crit->id] = [
+                        'raw'      => (float) ($agg->raw ?? 0),
+                        'weighted' => (float) ($agg->weighted ?? 0),
+                    ];
                 }
             }
 
-            // Totals for dense ranking
+            // Totals for dense ranking – now based on WEIGHTED scores
             $totals = [];
             foreach ($rows as $row) {
                 $cid = $row['contestant_id'];
                 $sum = 0.0;
                 foreach ($criteria as $crit) {
-                    $raw = $scoresCache[$cid][$crit->id] ?? 0.0;
-                    $sum += $raw * ((float)$crit->percentage / 100.0);
+                    $sum += $scoresCache[$cid][$crit->id]['weighted'] ?? 0.0;
                 }
                 $totals[$cid] = $sum;
             }
-            $uniq = array_values(array_unique(array_map(fn($v)=>round($v, 6), $totals)));
+
+            $uniq = array_values(array_unique(array_map(fn($v) => round($v, 6), $totals)));
             rsort($uniq, SORT_NUMERIC);
-            $rankByTotal = []; $rk = 1;
-            foreach ($uniq as $v) { $rankByTotal[$v] = $rk++; }
+            $rankByTotal = [];
+            $rk = 1;
+            foreach ($uniq as $v) {
+                $rankByTotal[$v] = $rk++;
+            }
 
             // Write rows
             $r = $startRow;
@@ -306,49 +320,48 @@ class JudgePrintableController extends Controller
                 $cid = $row['contestant_id'];
 
                 // # column — center the value
-                $seqCell = $table->Cell($r,1);
+                $seqCell = $table->Cell($r, 1);
                 $seqCell->Range->Text = (string)$row['candidate_number'];
                 $seqCell->Range->ParagraphFormat->Alignment = 1; // center
 
                 // LGU / NAME
-                $nameCell = $table->Cell($r,2);
+                $nameCell = $table->Cell($r, 2);
                 $nameCell->Range->Text = mb_strtoupper($row['municipality']);
 
-                // RAW block (2 decimals)
+                // RAW block (2 decimals) — still from `score`
                 $rawVals = [];
                 foreach ($criteria as $crit) {
-                    $rawVals[] = $scoresCache[$cid][$crit->id] ?? 0.0;
+                    $rawVals[] = $scoresCache[$cid][$crit->id]['raw'] ?? 0.0;
                 }
-                for ($i=0; $i<$critCount; $i++) {
+                for ($i = 0; $i < $critCount; $i++) {
                     $c = $table->Cell($r, $rawStart + $i);
                     $c->Range->Text = number_format($rawVals[$i] ?? 0, 2);
                     $c->Range->ParagraphFormat->Alignment = 2; // right
                 }
 
-                // % block (5 decimals) + total (5 decimals)
-                $pctVals = [];
+                // % block + total — from `weighted_score`
+                $pctVals    = [];
                 $judgeTotal = 0.0;
                 foreach ($criteria as $crit) {
-                    $raw = $scoresCache[$cid][$crit->id] ?? 0.0;
-                    $w = $raw * ((float)$crit->percentage / 100.0);
+                    $w = $scoresCache[$cid][$crit->id]['weighted'] ?? 0.0;
                     $pctVals[] = $w;
                     $judgeTotal += $w;
                 }
-                for ($i=0; $i<$critCount; $i++) {
+                for ($i = 0; $i < $critCount; $i++) {
                     $c = $table->Cell($r, $pctStart + $i);
                     $c->Range->Text = number_format($pctVals[$i] ?? 0, 5);
                     $c->Range->ParagraphFormat->Alignment = 2; // right
                 }
 
-                // Total (5 dp)
-                $totCell = $table->Cell($r,$totalCol);
+                // Total (5 dp) – also from weighted scores
+                $totCell = $table->Cell($r, $totalCol);
                 $totCell->Range->Text = number_format($judgeTotal, 5);
                 $totCell->Range->ParagraphFormat->Alignment = 2;
 
-                // Ranking — centered
+                // Ranking — centered, based on weighted total
                 $rankKey = round($judgeTotal, 6);
                 $rankVal = $rankByTotal[$rankKey] ?? '';
-                $rkCell = $table->Cell($r,$rankCol);
+                $rkCell  = $table->Cell($r, $rankCol);
                 $rkCell->Range->Text = (string)$rankVal;
                 $rkCell->Range->ParagraphFormat->Alignment = 1; // center
             }
@@ -356,13 +369,18 @@ class JudgePrintableController extends Controller
             // Trim extra rows
             $lastUsed = $r;
             while ($table->Rows->Count > $lastUsed) {
-                try { $table->Rows($table->Rows->Count)->Delete(); } catch (\Throwable $e) { break; }
+                try {
+                    $table->Rows($table->Rows->Count)->Delete();
+                } catch (\Throwable $e) {
+                    break;
+                }
             }
 
             // Keep compact padding
             $table->TopPadding = 1;  $table->BottomPadding = 1;
             $table->LeftPadding = 2; $table->RightPadding  = 2;
         };
+
 
         // ===== Fill Ms & Mr =====
         $critCount = $criteria->count();
