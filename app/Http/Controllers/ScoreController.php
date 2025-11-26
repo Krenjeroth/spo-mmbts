@@ -97,7 +97,15 @@ class ScoreController extends Controller
         // TODO: ⚠️ REMOVE THIS IN THE FUTURE
         // Correct logic should NOT round up. We are rounding up only due to current requirements.
         $rawWeighted = $data['score'] * ($criterion->percentage / 100);
-        $data['weighted_score'] = ceil($rawWeighted * 100000) / 100000; // round UP to 5 decimals
+
+        $integerPart = floor($rawWeighted);
+        if ($rawWeighted > $integerPart) {
+            $roundedUp = $integerPart + 1;
+        } else {
+            $roundedUp = $integerPart;
+        }
+
+        $data['weighted_score'] = number_format($roundedUp, 5, '.', '');
 
         $score = null;
 
